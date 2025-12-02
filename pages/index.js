@@ -12,11 +12,13 @@ export default function Home() {
       const user = result.user;
 
       // SCALABILITY CHECK: Change this line later to expand
+      /*
       if (!user.email.endsWith('iitb.ac.in')) {
          await auth.signOut();
          alert("Access Restricted: IIT Bombay Students Only (for now).");
          return;
       }
+      */
 
       // Check if user exists
       const userDoc = await getDoc(doc(db, "users", user.uid));
