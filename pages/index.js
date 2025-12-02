@@ -22,10 +22,11 @@ export default function Home() {
 
       // Check if user exists
       const userDoc = await getDoc(doc(db, "users", user.uid));
-      if (userDoc.exists()) {
+      if (userDoc.exists() && userDoc.data().completedSetup) {
         router.push('/dashboard');
       } else {
-        router.push('/register');
+        // Otherwise, send them to the new Wizard
+        router.push('/setup'); 
       }
     } catch (error) {
       console.error(error);
