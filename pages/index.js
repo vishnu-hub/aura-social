@@ -45,7 +45,7 @@ export default function Home() {
         onClick={handleLogin}
         className="bg-white text-black font-bold py-3 px-8 rounded-full hover:scale-105 transition transform"
       >
-        Sign in with Institute ID
+        Sign in
       </button>
     </div>
   );

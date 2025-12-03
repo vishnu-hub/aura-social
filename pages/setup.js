@@ -1,39 +1,76 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db, auth } from '../lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/router';
 
-// SCALABILITY: Add new colleges here later
 const CAMPUS_OPTIONS = ["IIT Bombay"]; 
 
 export default function SetupProfile() {
   const router = useRouter();
+  const fileInputRef = useRef(null);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // COMPLEX STATE for a robust profile
+  // 1. COMPLEX STATE
   const [profile, setProfile] = useState({
     displayName: '',
     bio: '',
-    campus: 'IIT Bombay', // Default locked to IITB for now
+    campus: 'IIT Bombay',
     gender: 'Male', 
     orientation: 'Heterosexual', 
     lookingFor: 'Female', 
     batch: '2025',
-    hostel: 'H1',
     mode: 'General', 
-    interests: [], 
     avatarSeed: Math.random().toString(), 
+    photoUrl: '', // New field for setup
     completedSetup: true
   });
 
-  // Load existing data if editing
+  // 2. COMPRESSION HELPER
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const scaleFactor = 300 / Math.max(img.width, img.height);
+          canvas.width = img.width * scaleFactor;
+          canvas.height = img.height * scaleFactor;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+      };
+    });
+  };
+
+  // 3. IMAGE HANDLER
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+        alert("Please select an image file.");
+        return;
+    }
+
+    try {
+        const compressedBase64 = await compressImage(file);
+        setProfile(prev => ({ ...prev, photoUrl: compressedBase64 }));
+    } catch (error) {
+        console.error("Compression failed:", error);
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
         if(auth.currentUser) {
             const docSnap = await getDoc(doc(db, "users", auth.currentUser.uid));
             if (docSnap.exists()) {
-                setProfile({ ...profile, ...docSnap.data() });
+                setProfile(prev => ({ ...prev, ...docSnap.data() }));
             }
         }
     };
@@ -45,7 +82,7 @@ export default function SetupProfile() {
     try {
         await setDoc(doc(db, "users", auth.currentUser.uid), {
             ...profile,
-            email: auth.currentUser.email, // Save email for admin verification
+            email: auth.currentUser.email,
             updatedAt: new Date(),
         }, { merge: true }); 
         
@@ -56,13 +93,13 @@ export default function SetupProfile() {
     setLoading(false);
   };
 
-  // --- STEP 1: THE DISCLAIMER ---
+  // --- STEP 1: DISCLAIMER ---
   if (step === 1) return (
     <div className="min-h-screen bg-black text-white p-8 flex flex-col justify-center max-w-md mx-auto">
         <h1 className="text-3xl font-bold text-red-500 mb-4">⚠️ The Rules</h1>
         <div className="bg-gray-900 p-6 rounded-lg border border-gray-700 space-y-4 text-gray-300">
-            <p>1. <strong>Exclusive:</strong> Aura is currently only for verified students of the campuses listed.</p>
-            <p>2. <strong>Safety:</strong> Harassment leads to an instant ban. We log IP addresses.</p>
+            <p>1. <strong>Exclusive:</strong> Aura is currently only for verified students.</p>
+            <p>2. <strong>Safety:</strong> Harassment leads to an instant ban.</p>
             <p>3. <strong>Vibe:</strong> Be authentic. Don't be a creep.</p>
         </div>
         <button onClick={() => setStep(2)} className="mt-8 w-full bg-white text-black font-bold py-4 rounded-full hover:scale-105 transition">
@@ -71,12 +108,11 @@ export default function SetupProfile() {
     </div>
   );
 
-  // --- STEP 2: IDENTITY & CAMPUS ---
+  // --- STEP 2: IDENTITY ---
   if (step === 2) return (
     <div className="min-h-screen bg-black text-white p-6 max-w-md mx-auto">
         <h2 className="text-2xl font-bold mb-6 text-purple-400">Identity Check</h2>
         
-        {/* NEW: CAMPUS SELECTOR */}
         <label className="block text-gray-400 text-xs uppercase font-bold mb-2">Select Campus</label>
         <select 
             value={profile.campus}
@@ -139,29 +175,49 @@ export default function SetupProfile() {
     </div>
   );
 
-  // --- STEP 3: CREATIVITY & AVATAR ---
+  // --- STEP 3: PHOTO & BIO (UPDATED) ---
   if (step === 3) return (
     <div className="min-h-screen bg-black text-white p-6 flex flex-col items-center max-w-md mx-auto">
         <h2 className="text-2xl font-bold mb-4">Your Aura</h2>
         
-        <img 
-            src={`https://api.dicebear.com/7.x/notionists/svg?seed=${profile.avatarSeed}`} 
-            alt="avatar"
-            className="w-32 h-32 rounded-full border-4 border-purple-500 mb-4 bg-white"
-        />
-        <button 
-            onClick={() => setProfile({...profile, avatarSeed: Math.random().toString()})}
-            className="text-sm text-purple-400 mb-6 hover:underline"
-        >
-            🎲 Randomize Avatar
-        </button>
+        {/* PHOTO UPLOAD UI */}
+        <div className="relative group mb-4">
+            <img 
+                src={profile.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${profile.avatarSeed}`} 
+                alt="avatar"
+                className="w-32 h-32 rounded-full border-4 border-purple-500 bg-gray-800 object-cover"
+            />
+             <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer"
+            >
+                <span className="text-xs font-bold">Upload Photo</span>
+            </button>
+        </div>
+        
+        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+
+        <div className="flex gap-4 text-sm mb-6">
+            <button 
+                onClick={() => setProfile({...profile, avatarSeed: Math.random().toString()})}
+                className="text-purple-400 hover:underline"
+            >
+                🎲 Random Avatar
+            </button>
+            <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="text-purple-400 hover:underline"
+            >
+                📷 Upload Photo
+            </button>
+        </div>
 
         <label className="w-full block text-gray-400 text-sm mb-1">Bio (Make it witty)</label>
         <textarea 
             value={profile.bio}
             onChange={e => setProfile({...profile, bio: e.target.value})}
             className="w-full bg-gray-800 p-3 rounded mb-4 h-24 border border-gray-700 focus:border-purple-500"
-            placeholder="Reviewing mess food since 2023. Looking for someone to attend Pronite with."
+            placeholder="Reviewing mess food since 2023..."
         />
 
         <div className="w-full bg-gray-900 p-4 rounded border border-yellow-600 mb-6">

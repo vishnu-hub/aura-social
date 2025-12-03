@@ -10,7 +10,6 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
-  // 1. INITIAL STATE (Safe Defaults)
   const [profile, setProfile] = useState({
     displayName: '',
     bio: '',
@@ -22,7 +21,6 @@ export default function Profile() {
     photoUrl: '' 
   });
 
-  // 2. HELPER: Compress Image
   const compressImage = (file) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -43,7 +41,6 @@ export default function Profile() {
     });
   };
 
-  // 3. LOAD DATA
   useEffect(() => {
     const fetchProfile = async () => {
       if (!auth.currentUser) return router.push('/');
@@ -54,7 +51,6 @@ export default function Profile() {
           
           if (docSnap.exists()) {
             const data = docSnap.data();
-            // SAFE MERGE: Keep defaults if DB fields are missing
             setProfile(prev => ({
                 ...prev, 
                 ...data,
@@ -87,12 +83,16 @@ export default function Profile() {
     }
   };
 
+  // NEW: Function to remove photo
+  const handleRemovePhoto = () => {
+      setProfile(prev => ({ ...prev, photoUrl: '' }));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
       if(!auth.currentUser) return;
       
-      // Sanitized profile object to prevent undefined errors in DB
       const safeProfile = {
         ...profile,
         updatedAt: new Date()
@@ -111,21 +111,11 @@ export default function Profile() {
     router.push('/');
   };
 
-  // --- RENDER LOGIC ---
-
-  // Safety Check 1: Still loading?
   if (loading) return <div className="min-h-screen bg-black text-white flex items-center justify-center">Loading...</div>;
-
-  // Safety Check 2: Profile somehow undefined? (The Guard Clause)
   if (!profile) return <div className="min-h-screen bg-black text-white flex items-center justify-center">Reloading...</div>;
 
-  // Variable Extraction (Prevents "undefined is not an object" crash)
-  const safeAvatarSeed = profile.avatarSeed || 'default';
-  const safePhotoUrl = profile.photoUrl || null;
-  const avatarUrl = `https://api.dicebear.com/7.x/notionists/svg?seed=${safeAvatarSeed}`;
-  
   // Decide which image to show
-  const displayImage = safePhotoUrl || avatarUrl;
+  const displayImage = profile.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${profile.avatarSeed}`;
 
   return (
     <div className="min-h-screen bg-black text-white p-6 pb-20">
@@ -155,12 +145,24 @@ export default function Profile() {
 
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
 
-            <button 
-                onClick={() => setProfile(prev => ({...prev, avatarSeed: Math.random().toString()}))}
-                className="text-purple-400 text-sm hover:underline mt-2"
-            >
-                Or roll new avatar 🎲
-            </button>
+            <div className="flex gap-4 mt-3 text-sm">
+                <button 
+                    onClick={() => setProfile(prev => ({...prev, avatarSeed: Math.random().toString()}))}
+                    className="text-purple-400 hover:underline"
+                >
+                    🎲 New Avatar
+                </button>
+
+                {/* SHOW REMOVE BUTTON ONLY IF PHOTO EXISTS */}
+                {profile.photoUrl && (
+                    <button 
+                        onClick={handleRemovePhoto}
+                        className="text-red-500 hover:underline border-l border-gray-700 pl-4"
+                    >
+                        🗑️ Remove Photo
+                    </button>
+                )}
+            </div>
         </div>
 
         {/* INPUTS */}
