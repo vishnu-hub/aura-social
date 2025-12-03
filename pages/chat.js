@@ -1,4 +1,3 @@
-// pages/chat.js
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { db, auth } from '../lib/firebase';
@@ -6,25 +5,37 @@ import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, g
 
 export default function Chat() {
   const router = useRouter();
-  const { id } = router.query; // Get chat ID from URL
+  const { id } = router.query;
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
-  const [matchName, setMatchName] = useState("Match");
-  const dummy = useRef(); // Auto-scroll to bottom
+  const [otherUser, setOtherUser] = useState(null); // Store the full profile of the match
+  const dummy = useRef();
 
   useEffect(() => {
     if (!id || !auth.currentUser) return;
 
-    // 1. Get Match Name (Optional, but looks nice)
-    const fetchMatchName = async () => {
-        const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-        if (userDoc.exists()) {
-            setMatchName(userDoc.data().matchName || "Your Match");
+    // 1. Fetch the "Other User" details for the Header
+    const fetchHeaderData = async () => {
+        try {
+            const chatRef = doc(db, "chats", id);
+            const chatSnap = await getDoc(chatRef);
+            
+            if (chatSnap.exists()) {
+                const users = chatSnap.data().users;
+                const otherUserId = users.find(u => u !== auth.currentUser.uid);
+                
+                const userSnap = await getDoc(doc(db, "users", otherUserId));
+                if (userSnap.exists()) {
+                    setOtherUser(userSnap.data());
+                }
+            }
+        } catch (e) {
+            console.error("Error fetching header:", e);
         }
     };
-    fetchMatchName();
+    fetchHeaderData();
 
-    // 2. Listen for Messages (Real-time)
+    // 2. Listen for Messages
     const q = query(collection(db, "chats", id, "messages"), orderBy("createdAt"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -48,15 +59,23 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-screen bg-black text-white">
-      {/* Header */}
-      <div className="bg-gray-900 p-4 border-b border-gray-800 flex justify-between items-center sticky top-0 z-10">
-        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white">
-          ← Back
+      {/* Header with REAL PHOTO */}
+      <div className="bg-gray-900 p-4 border-b border-gray-800 flex items-center sticky top-0 z-10">
+        <button onClick={() => router.push('/matches')} className="text-gray-400 hover:text-white mr-4 text-xl">
+          ←
         </button>
-        <h2 className="font-bold text-lg bg-gradient-to-r from-purple-400 to-pink-600 text-transparent bg-clip-text">
-          {matchName}
-        </h2>
-        <div className="w-8"></div> {/* Spacer for centering */}
+        
+        {otherUser ? (
+            <div className="flex items-center gap-3">
+                <img 
+                    src={otherUser.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${otherUser.avatarSeed || 'default'}`}
+                    className="w-10 h-10 rounded-full border border-purple-500 bg-gray-800 object-cover"
+                />
+                <h2 className="font-bold text-lg">{otherUser.displayName}</h2>
+            </div>
+        ) : (
+            <h2 className="font-bold text-lg">Loading...</h2>
+        )}
       </div>
 
       {/* Chat Area */}
