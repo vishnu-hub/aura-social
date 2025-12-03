@@ -9,7 +9,7 @@ export default function Profile() {
   const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [blockedList, setBlockedList] = useState([]); // Store details of blocked users
+  const [blockedList, setBlockedList] = useState([]); 
   
   const [profile, setProfile] = useState({
     displayName: '',
@@ -20,7 +20,7 @@ export default function Profile() {
     mode: 'General', 
     avatarSeed: 'default',
     photoUrl: '',
-    blocked: [] // We need this to track IDs
+    blocked: [] 
   });
 
   const compressImage = (file) => {
@@ -53,6 +53,8 @@ export default function Profile() {
           
           if (docSnap.exists()) {
             const data = docSnap.data();
+            
+            // Set Profile Data
             setProfile(prev => ({
                 ...prev, 
                 ...data,
@@ -61,16 +63,15 @@ export default function Profile() {
                 blocked: data.blocked || []
             }));
 
-            // --- FETCH DETAILS OF BLOCKED USERS ---
+            // Fetch Blocked Users Details
             if (data.blocked && data.blocked.length > 0) {
-                // Firestore "IN" query to get all blocked profiles at once
                 const q = query(collection(db, "users"), where(documentId(), "in", data.blocked));
                 const blockedSnaps = await getDocs(q);
-                const blockedUsers = [];
+                const loadedBlocked = [];
                 blockedSnaps.forEach(snap => {
-                    blockedUsers.push({ uid: snap.id, ...snap.data() });
+                    loadedBlocked.push({ uid: snap.id, ...snap.data() });
                 });
-                setBlockedList(blockedUsers);
+                setBlockedList(loadedBlocked);
             }
           }
       } catch (e) {
@@ -102,25 +103,23 @@ export default function Profile() {
       setProfile(prev => ({ ...prev, photoUrl: '' }));
   };
 
-  // --- NEW: UNBLOCK FUNCTION ---
+  // --- THE FIXED UNBLOCK FUNCTION ---
   const handleUnblock = async (targetUid) => {
-      if(!confirm("Unblock this user? They will appear in your feed again.")) return;
+      // 1. Immediate UI Feedback (Optimistic Update)
+      // This forces the user to disappear from the screen instantly
+      setBlockedList(prevList => prevList.filter(user => user.uid !== targetUid));
 
       try {
-          // 1. Remove from 'blocked' array in DB
+          // 2. Database Update
           await updateDoc(doc(db, "users", auth.currentUser.uid), {
               blocked: arrayRemove(targetUid),
-              // Also remove from 'passed'/'liked' so they reappear in feed
               passed: arrayRemove(targetUid),
               liked: arrayRemove(targetUid)
           });
-
-          // 2. Remove from local UI list
-          setBlockedList(prev => prev.filter(user => user.uid !== targetUid));
-          
-          alert("User unblocked. They may appear in your feed soon.");
       } catch (e) {
-          alert("Error unblocking: " + e.message);
+          alert("Error updating database: " + e.message);
+          // If DB fails, revert the change (reload page)
+          router.reload();
       }
   };
 
@@ -161,7 +160,8 @@ export default function Profile() {
       </div>
 
       <div className="max-w-md mx-auto space-y-6">
-        {/* --- IMAGE UPLOAD SECTION --- */}
+        
+        {/* IMAGE SECTION */}
         <div className="flex flex-col items-center">
             <div className="relative group">
                 <img 
@@ -183,7 +183,7 @@ export default function Profile() {
             </div>
         </div>
 
-        {/* --- INPUTS --- */}
+        {/* INPUTS */}
         <div>
             <label className="text-gray-500 text-xs uppercase font-bold">Display Name</label>
             <input value={profile.displayName || ''} onChange={e => setProfile({...profile, displayName: e.target.value})} className="w-full bg-gray-900 border border-gray-800 p-3 rounded mt-1 outline-none focus:border-purple-500"/>
@@ -193,14 +193,60 @@ export default function Profile() {
             <textarea value={profile.bio || ''} onChange={e => setProfile({...profile, bio: e.target.value})} className="w-full bg-gray-900 border border-gray-800 p-3 rounded mt-1 h-24 outline-none focus:border-purple-500"/>
         </div>
 
-        {/* --- BLOCKED USERS LIST --- */}
-        {blockedList.length > 0 && (
-            <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 mt-6">
-                <h3 className="text-red-400 font-bold mb-4 text-sm uppercase">Blocked Users</h3>
+        {/* SETTINGS (Campus, Gender etc) */}
+        <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+            <h3 className="text-purple-400 font-bold mb-4">Settings</h3>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label className="text-gray-500 text-xs">I am</label>
+                    <select 
+                        value={profile.gender}
+                        onChange={e => setProfile({...profile, gender: e.target.value})}
+                        className="w-full bg-black p-2 rounded mt-1 border border-gray-700"
+                    >
+                        <option>Male</option>
+                        <option>Female</option>
+                        <option>Non-Binary</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="text-gray-500 text-xs">Looking For</label>
+                    <select 
+                        value={profile.lookingFor}
+                        onChange={e => setProfile({...profile, lookingFor: e.target.value})}
+                        className="w-full bg-black p-2 rounded mt-1 border border-gray-700"
+                    >
+                        <option value="Female">Women</option>
+                        <option value="Male">Men</option>
+                        <option value="Everyone">Everyone</option>
+                    </select>
+                </div>
+            </div>
+             <div className="flex justify-between items-center bg-black p-3 rounded border border-yellow-800/50">
+                <div>
+                    <span className="text-yellow-400 font-bold block">Mood Indigo Mode 🎷</span>
+                    <span className="text-gray-500 text-xs">Find concert dates</span>
+                </div>
+                <input 
+                    type="checkbox"
+                    checked={profile.mode === 'MoodIndigo'}
+                    onChange={(e) => setProfile({...profile, mode: e.target.checked ? 'MoodIndigo' : 'General'})}
+                    className="w-6 h-6 accent-yellow-400"
+                />
+            </div>
+        </div>
+
+        {/* BLOCKED USERS (ALWAYS VISIBLE) */}
+        <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 mt-6">
+            <h3 className="text-red-400 font-bold mb-4 text-sm uppercase">Blocked Users</h3>
+            
+            {blockedList.length === 0 ? (
+                <p className="text-gray-500 text-sm italic">You haven't blocked anyone.</p>
+            ) : (
                 <div className="space-y-3">
                     {blockedList.map(blockedUser => (
                         <div key={blockedUser.uid} className="flex justify-between items-center bg-black p-3 rounded border border-gray-800">
-                            <span className="font-bold text-sm">{blockedUser.displayName || "Unknown User"}</span>
+                            <span className="font-bold text-sm text-gray-300">{blockedUser.displayName || "Unknown"}</span>
                             <button 
                                 onClick={() => handleUnblock(blockedUser.uid)}
                                 className="text-xs bg-gray-800 text-white px-3 py-1 rounded border border-gray-600 hover:bg-gray-700"
@@ -210,10 +256,10 @@ export default function Profile() {
                         </div>
                     ))}
                 </div>
-            </div>
-        )}
+            )}
+        </div>
 
-        <button onClick={handleSave} disabled={saving} className="w-full bg-white text-black font-bold py-4 rounded-full text-lg hover:scale-105 transition sticky bottom-4 shadow-xl">
+        <button onClick={handleSave} disabled={saving} className="w-full bg-white text-black font-bold py-4 rounded-full text-lg hover:scale-105 transition sticky bottom-4 shadow-xl mt-6">
             {saving ? "Saving..." : "Save Changes"}
         </button>
       </div>
