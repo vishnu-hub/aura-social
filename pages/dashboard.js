@@ -137,15 +137,26 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center p-4 relative overflow-hidden">
       
-      {/* Header */}
-      <div className="w-full flex justify-between items-center mb-4 max-w-md">
-        <h1 className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 text-2xl">
-            Aura
-        </h1>
-        <button onClick={() => router.push('/matches')} className="text-gray-400 hover:text-white">
-            💬 Chats
-        </button>
-      </div>
+      {/* New Header */}
+        <div className="w-full flex justify-between items-center mb-4 max-w-md px-2">
+            {/* Left: Profile Icon */}
+            <button onClick={() => router.push('/profile')}>
+                <img 
+                    src={`https://api.dicebear.com/7.x/notionists/svg?seed=${user.avatarSeed}`} 
+                    className="w-10 h-10 rounded-full border border-purple-500 bg-gray-800"
+                />
+            </button>
+
+            {/* Center: Logo */}
+            <h1 className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 text-2xl tracking-tighter">
+                AURA
+            </h1>
+
+            {/* Right: Chats */}
+            <button onClick={() => router.push('/matches')} className="p-2 bg-gray-900 rounded-full hover:bg-gray-800 border border-gray-800">
+                💬
+            </button>
+        </div>
 
       {/* MATCH POPUP MODAL */}
       {showMatchPopup && (
