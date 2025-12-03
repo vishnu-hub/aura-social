@@ -54,7 +54,6 @@ export default function Profile() {
           if (docSnap.exists()) {
             const data = docSnap.data();
             
-            // Set Profile Data
             setProfile(prev => ({
                 ...prev, 
                 ...data,
@@ -63,7 +62,6 @@ export default function Profile() {
                 blocked: data.blocked || []
             }));
 
-            // Fetch Blocked Users Details
             if (data.blocked && data.blocked.length > 0) {
                 const q = query(collection(db, "users"), where(documentId(), "in", data.blocked));
                 const blockedSnaps = await getDocs(q);
@@ -103,14 +101,20 @@ export default function Profile() {
       setProfile(prev => ({ ...prev, photoUrl: '' }));
   };
 
-  // --- THE FIXED UNBLOCK FUNCTION ---
+  // --- THE CORRECTED UNBLOCK LOGIC ---
   const handleUnblock = async (targetUid) => {
-      // 1. Immediate UI Feedback (Optimistic Update)
-      // This forces the user to disappear from the screen instantly
+      // 1. Remove from Visual List (UI)
       setBlockedList(prevList => prevList.filter(user => user.uid !== targetUid));
 
+      // 2. Remove from Form Data State (Crucial Step!)
+      // This ensures that when you click 'Save', you don't re-add them.
+      setProfile(prev => ({
+          ...prev,
+          blocked: prev.blocked.filter(id => id !== targetUid)
+      }));
+
       try {
-          // 2. Database Update
+          // 3. Remove from Database immediately
           await updateDoc(doc(db, "users", auth.currentUser.uid), {
               blocked: arrayRemove(targetUid),
               passed: arrayRemove(targetUid),
@@ -118,7 +122,6 @@ export default function Profile() {
           });
       } catch (e) {
           alert("Error updating database: " + e.message);
-          // If DB fails, revert the change (reload page)
           router.reload();
       }
   };
@@ -161,7 +164,7 @@ export default function Profile() {
 
       <div className="max-w-md mx-auto space-y-6">
         
-        {/* IMAGE SECTION */}
+        {/* IMAGE */}
         <div className="flex flex-col items-center">
             <div className="relative group">
                 <img 
@@ -193,7 +196,7 @@ export default function Profile() {
             <textarea value={profile.bio || ''} onChange={e => setProfile({...profile, bio: e.target.value})} className="w-full bg-gray-900 border border-gray-800 p-3 rounded mt-1 h-24 outline-none focus:border-purple-500"/>
         </div>
 
-        {/* SETTINGS (Campus, Gender etc) */}
+        {/* SETTINGS */}
         <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
             <h3 className="text-purple-400 font-bold mb-4">Settings</h3>
             <div className="grid grid-cols-2 gap-4 mb-4">
@@ -236,7 +239,7 @@ export default function Profile() {
             </div>
         </div>
 
-        {/* BLOCKED USERS (ALWAYS VISIBLE) */}
+        {/* BLOCKED USERS */}
         <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 mt-6">
             <h3 className="text-red-400 font-bold mb-4 text-sm uppercase">Blocked Users</h3>
             
