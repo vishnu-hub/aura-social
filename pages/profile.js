@@ -101,25 +101,27 @@ export default function Profile() {
       setProfile(prev => ({ ...prev, photoUrl: '' }));
   };
 
-  // --- THE CORRECTED UNBLOCK LOGIC ---
+  // --- THE AGGRESSIVE UNBLOCK FUNCTION ---
   const handleUnblock = async (targetUid) => {
       // 1. Remove from Visual List (UI)
       setBlockedList(prevList => prevList.filter(user => user.uid !== targetUid));
 
-      // 2. Remove from Form Data State (Crucial Step!)
-      // This ensures that when you click 'Save', you don't re-add them.
+      // 2. Remove from Form Data State (So 'Save' doesn't undo it)
       setProfile(prev => ({
           ...prev,
           blocked: prev.blocked.filter(id => id !== targetUid)
       }));
 
       try {
-          // 3. Remove from Database immediately
+          // 3. NUCLEAR CLEANUP: Remove from ALL lists in Database
           await updateDoc(doc(db, "users", auth.currentUser.uid), {
               blocked: arrayRemove(targetUid),
               passed: arrayRemove(targetUid),
-              liked: arrayRemove(targetUid)
+              liked: arrayRemove(targetUid),
+              matches: arrayRemove(targetUid) // <--- ADD THIS (Crucial!)
           });
+          
+          alert("User unblocked and history reset. They will appear in your feed.");
       } catch (e) {
           alert("Error updating database: " + e.message);
           router.reload();
