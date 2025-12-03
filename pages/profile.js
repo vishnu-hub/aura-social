@@ -39,22 +39,52 @@ export default function Profile() {
   }, []);
 
   // 2. Handle Image Selection (The "Hack")
-  const handleImageUpload = (e) => {
+  // --- ADD THIS HELPER FUNCTION OUTSIDE OR INSIDE YOUR COMPONENT ---
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          // Limit resolution to 300px (enough for an avatar)
+          const scaleFactor = 300 / Math.max(img.width, img.height);
+          canvas.width = img.width * scaleFactor;
+          canvas.height = img.height * scaleFactor;
+          
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          // Compress to JPEG at 70% quality
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+      };
+    });
+  };
+
+  // --- REPLACE YOUR OLD handleImageUpload WITH THIS ---
+  const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // A. Size Check (Critical for Free Tier)
-    if (file.size > 500 * 1024) { // 500KB limit
-        alert("Image too large! Please choose a photo under 500KB.");
+    // 1. Basic Validation
+    if (!file.type.startsWith('image/')) {
+        alert("Please select an image file.");
         return;
     }
 
-    // B. Convert to Text (Base64)
-    const reader = new FileReader();
-    reader.onloadend = () => {
-        setProfile({ ...profile, photoUrl: reader.result }); // Save the image as a string
-    };
-    reader.readAsDataURL(file);
+    try {
+        // 2. Compress the image (No matter how big the original is)
+        const compressedBase64 = await compressImage(file);
+        
+        // 3. Save to State
+        setProfile({ ...profile, photoUrl: compressedBase64 });
+    } catch (error) {
+        console.error("Compression failed:", error);
+        alert("Could not process image. Try a different one.");
+    }
   };
 
   // 3. Save Changes
