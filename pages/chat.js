@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { db, auth } from '../lib/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 
 export default function Chat() {
   const router = useRouter();
@@ -9,11 +9,11 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [otherUser, setOtherUser] = useState(null);
-  const [sending, setSending] = useState(false); // To show loading state
+  const [sending, setSending] = useState(false);
   const dummy = useRef();
   const fileInputRef = useRef(null);
 
-  // 1. REUSE THE COMPRESSION LOGIC (HD Quality)
+  // 1. COMPRESSION LOGIC
   const compressImage = (file) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -34,10 +34,10 @@ export default function Chat() {
     });
   };
 
+  // 2. FETCH DATA & LISTEN
   useEffect(() => {
     if (!id || !auth.currentUser) return;
 
-    // Fetch Other User Header
     const fetchHeaderData = async () => {
         try {
             const chatRef = doc(db, "chats", id);
@@ -46,13 +46,12 @@ export default function Chat() {
                 const users = chatSnap.data().users;
                 const otherUserId = users.find(u => u !== auth.currentUser.uid);
                 const userSnap = await getDoc(doc(db, "users", otherUserId));
-                if (userSnap.exists()) setOtherUser(userSnap.data());
+                if (userSnap.exists()) setOtherUser({ uid: otherUserId, ...userSnap.data() });
             }
         } catch (e) { console.error(e); }
     };
     fetchHeaderData();
 
-    // Listen for Messages
     const q = query(collection(db, "chats", id, "messages"), orderBy("createdAt"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -62,7 +61,7 @@ export default function Chat() {
     return () => unsubscribe();
   }, [id]);
 
-  // 2. SEND TEXT MESSAGE
+  // 3. SEND MESSAGES
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
@@ -76,7 +75,6 @@ export default function Chat() {
     setNewMessage("");
   };
 
-  // 3. SEND IMAGE MESSAGE
   const handleImageSend = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -84,7 +82,6 @@ export default function Chat() {
     setSending(true);
     try {
         const compressedBase64 = await compressImage(file);
-        
         await addDoc(collection(db, "chats", id, "messages"), {
             imageUrl: compressedBase64,
             senderId: auth.currentUser.uid,
@@ -97,12 +94,31 @@ export default function Chat() {
     setSending(false);
   };
 
+  // 4. THE MISSING BLOCK FUNCTION (This fixes the error)
+  const handleBlock = async () => {
+      if(!confirm(`Are you sure you want to block ${otherUser?.displayName}? This cannot be undone.`)) return;
+
+      try {
+          const myId = auth.currentUser.uid;
+          
+          await updateDoc(doc(db, "users", myId), {
+              blocked: arrayUnion(otherUser.uid),
+              matches: arrayRemove(otherUser.uid)
+          });
+
+          alert("User blocked.");
+          router.push('/dashboard');
+      } catch (e) {
+          alert("Error blocking user: " + e.message);
+      }
+  };
+
+  // 5. RENDER
   return (
-    <div className="flex flex-col h-screen bg-black text-white">
-      {/* Header */}
+    <div className="flex flex-col h-screen bg-black text-white relative">
+      
+      {/* HEADER with RED BLOCK BUTTON */}
       <div className="bg-gray-900 p-4 border-b border-gray-800 flex items-center justify-between sticky top-0 z-10 shadow-md">
-        
-        {/* LEFT SIDE: Back Btn + User Info */}
         <div className="flex items-center gap-3">
             <button onClick={() => router.push('/matches')} className="text-gray-400 hover:text-white text-xl">←</button>
             {otherUser ? (
@@ -116,7 +132,6 @@ export default function Chat() {
             ) : <h2 className="font-bold text-lg text-gray-500">Loading...</h2>}
         </div>
 
-        {/* RIGHT SIDE: Block Button (Now unambiguous) */}
         <button 
             onClick={handleBlock}
             className="text-red-500 bg-red-500/10 px-3 py-2 rounded-lg text-sm font-bold border border-red-500/50 hover:bg-red-500 hover:text-white transition"
@@ -125,14 +140,8 @@ export default function Chat() {
         </button>
       </div>
 
-      {/* Chat Area */}
+      {/* CHAT AREA */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black">
-        {messages.length === 0 && (
-            <div className="text-center text-gray-600 mt-10 text-sm">
-                <p>Start the conversation with a pic 📸</p>
-            </div>
-        )}
-        
         {messages.map((msg) => {
           const isMe = msg.senderId === auth.currentUser?.uid;
           return (
@@ -140,7 +149,6 @@ export default function Chat() {
               <div className={`max-w-[75%] rounded-2xl overflow-hidden ${
                 isMe ? 'bg-purple-600 text-white rounded-br-none' : 'bg-gray-800 text-gray-200 rounded-bl-none'
               }`}>
-                {/* RENDER LOGIC: Text vs Image */}
                 {msg.type === 'image' ? (
                     <img src={msg.imageUrl} className="w-full max-w-[250px] object-cover" />
                 ) : (
@@ -153,10 +161,8 @@ export default function Chat() {
         <div ref={dummy}></div>
       </div>
 
-      {/* Input Area */}
+      {/* INPUT AREA */}
       <form onSubmit={sendMessage} className="p-3 bg-gray-900 border-t border-gray-800 flex gap-2 items-center">
-        
-        {/* IMAGE BUTTON */}
         <button 
             type="button" 
             onClick={() => fileInputRef.current?.click()}
@@ -167,21 +173,13 @@ export default function Chat() {
         </button>
         <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSend} />
 
-        {/* TEXT INPUT */}
         <input 
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           className="flex-1 bg-gray-800 border border-gray-700 text-white p-3 rounded-full focus:outline-none focus:border-purple-500"
           placeholder="Message..."
         />
-        
-        <button 
-            type="submit" 
-            disabled={!newMessage.trim()}
-            className="bg-purple-600 text-white p-3 rounded-full px-6 font-bold disabled:opacity-50 hover:bg-purple-500 transition"
-        >
-            ➤
-        </button>
+        <button type="submit" disabled={!newMessage.trim()} className="bg-purple-600 text-white p-3 rounded-full px-6 font-bold">➤</button>
       </form>
     </div>
   );
