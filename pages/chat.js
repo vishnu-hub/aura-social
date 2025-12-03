@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { db, auth } from '../lib/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, updateDoc, arrayUnion, arrayRemove, deleteDoc } from 'firebase/firestore';
 
 export default function Chat() {
   const router = useRouter();
@@ -96,20 +96,24 @@ export default function Chat() {
 
   // 4. THE MISSING BLOCK FUNCTION (This fixes the error)
   const handleBlock = async () => {
-      if(!confirm(`Are you sure you want to block ${otherUser?.displayName}? This cannot be undone.`)) return;
+      if(!confirm(`Block ${otherUser?.displayName}? Chat history will be deleted.`)) return;
 
       try {
           const myId = auth.currentUser.uid;
           
+          // 1. Add to Blocked List (So they don't show up in Feed again)
           await updateDoc(doc(db, "users", myId), {
               blocked: arrayUnion(otherUser.uid),
               matches: arrayRemove(otherUser.uid)
           });
 
+          // 2. DELETE THE CHAT (This makes you disappear from THEIR list too)
+          await deleteDoc(doc(db, "chats", id));
+
           alert("User blocked.");
           router.push('/dashboard');
       } catch (e) {
-          alert("Error blocking user: " + e.message);
+          alert("Error blocking: " + e.message);
       }
   };
 
