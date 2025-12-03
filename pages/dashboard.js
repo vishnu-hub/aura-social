@@ -207,7 +207,7 @@ export default function Dashboard() {
         <div className="flex flex-col items-center justify-center h-2/3 text-center max-w-xs">
             <div className="text-6xl mb-4">🌍</div>
             <h2 className="text-2xl font-bold mb-2">That's everyone!</h2>
-            <p className="text-gray-400 mb-6 text-sm">You've seen all profiles in {user.campus}.</p>
+            <p className="text-gray-400 mb-6 text-sm">You've seen all profiles in {user.campus}. Still Didn't find anyone???🤣</p>
             
             {/* OPTION 1: Refresh just in case */}
             <button onClick={() => router.reload()} className="text-purple-400 hover:text-white mb-4">Refresh Feed</button>
@@ -217,7 +217,7 @@ export default function Dashboard() {
                 onClick={handleRecycle}
                 className="bg-gray-800 border border-gray-600 text-white px-6 py-3 rounded-full hover:bg-gray-700 transition"
             >
-                🔄 Review Rejected Profiles
+                🔄 It's okay. I get it. Review Rejected Profiles. It's all about second choices😉
             </button>
         </div>
       )}
