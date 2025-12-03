@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { auth, db } from '../lib/firebase';
-import { doc, getDoc, getDocs, collection, query, where, updateDoc, arrayUnion, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, where, updateDoc, arrayUnion, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { useRouter } from 'next/router';
 import confetti from 'canvas-confetti';
 
@@ -11,8 +11,9 @@ export default function Dashboard() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [showMatchPopup, setShowMatchPopup] = useState(null); 
   const [loading, setLoading] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0); // NEW: Notification Count
 
-  // 1. Load Current User & Recommendations
+  // 1. Load User & Feed
   useEffect(() => {
     const init = async () => {
       if (!auth.currentUser) return router.push('/');
@@ -23,7 +24,6 @@ export default function Dashboard() {
         
         const myData = mySnap.data();
         
-        // SAFE USER OBJECT (Now includes 'blocked')
         const safeUser = {
             uid: auth.currentUser.uid,
             ...myData,
@@ -32,11 +32,21 @@ export default function Dashboard() {
             mode: myData.mode || "General",
             avatarSeed: myData.avatarSeed || "default",
             photoUrl: myData.photoUrl || "",
-            blocked: myData.blocked || [] // <--- CRITICAL: Load blocked list
+            blocked: myData.blocked || [] 
         };
         setUser(safeUser);
 
-        // Build Query
+        // --- NEW: LISTEN FOR UNREAD MESSAGES ---
+        // Query chats where 'unreadBy' array contains MY ID
+        const unreadQuery = query(
+            collection(db, "chats"), 
+            where("unreadBy", "array-contains", auth.currentUser.uid)
+        );
+        const unsubscribe = onSnapshot(unreadQuery, (snapshot) => {
+            setUnreadCount(snapshot.size); // Count how many docs found
+        });
+
+        // --- FEED LOGIC ---
         let q = query(
             collection(db, "users"), 
             where("campus", "==", safeUser.campus),
@@ -57,13 +67,11 @@ export default function Dashboard() {
 
         querySnapshot.forEach((doc) => {
             const theirId = doc.id;
-            
-            // FILTER LOGIC: Remove Liked, Passed, Matches, AND BLOCKED
             const myHistory = [
                 ...(myData.liked || []), 
                 ...(myData.passed || []), 
                 ...(myData.matches || []),
-                ...(myData.blocked || []) // <--- THE FIX: Add blocked here
+                ...(myData.blocked || []) 
             ];
             
             if (theirId !== safeUser.uid && !myHistory.includes(theirId)) {
@@ -87,8 +95,6 @@ export default function Dashboard() {
 
     const targetSnap = await getDoc(doc(db, "users", target.id));
     const targetData = targetSnap.data();
-    
-    // Check if THEY liked ME
     const isMatch = targetData?.liked?.includes(user.uid);
 
     if (isMatch) {
@@ -123,10 +129,13 @@ export default function Dashboard() {
 
   const triggerMatch = async (targetUser) => {
     confetti(); 
+    
+    // NEW: Add 'unreadBy' field so both users get a notification badge
     const chatRef = await addDoc(collection(db, "chats"), {
         users: [user.uid, targetUser.id],
         createdAt: serverTimestamp(),
-        lastMessage: "Matched! Say hi."
+        lastMessage: "Matched! Say hi.",
+        unreadBy: [user.uid, targetUser.id] // <--- NOTIFICATION TRIGGER
     });
 
     await updateDoc(doc(db, "users", user.uid), { matches: arrayUnion(targetUser.id) });
@@ -156,8 +165,14 @@ export default function Dashboard() {
             AURA
         </h1>
 
-        <button onClick={() => router.push('/matches')} className="p-2 bg-gray-900 rounded-full hover:bg-gray-800 border border-gray-800">
+        {/* CHAT ICON WITH RED BADGE */}
+        <button onClick={() => router.push('/matches')} className="relative p-2 bg-gray-900 rounded-full hover:bg-gray-800 border border-gray-800">
             💬
+            {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full animate-pulse">
+                    {unreadCount}
+                </span>
+            )}
         </button>
       </div>
 
@@ -175,7 +190,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* CARD LOGIC */}
+      {/* CARD */}
       {currentProfile ? (
         <div className="w-full max-w-md flex-1 flex flex-col">
             <div className="bg-gray-900 rounded-3xl overflow-hidden border border-gray-800 shadow-2xl relative flex-1">
@@ -208,15 +223,8 @@ export default function Dashboard() {
             <div className="text-6xl mb-4">🌍</div>
             <h2 className="text-2xl font-bold mb-2">That's everyone!</h2>
             <p className="text-gray-400 mb-6 text-sm">You've seen all profiles in {user.campus}.</p>
-            
             <button onClick={() => router.reload()} className="text-purple-400 hover:text-white mb-4">Refresh Feed</button>
-
-            <button 
-                onClick={handleRecycle}
-                className="bg-gray-800 border border-gray-600 text-white px-6 py-3 rounded-full hover:bg-gray-700 transition"
-            >
-                🔄 Review Rejected Profiles
-            </button>
+            <button onClick={handleRecycle} className="bg-gray-800 border border-gray-600 text-white px-6 py-3 rounded-full hover:bg-gray-700 transition">🔄 Review Rejected Profiles</button>
         </div>
       )}
     </div>
