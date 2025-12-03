@@ -100,17 +100,29 @@ export default function Chat() {
   return (
     <div className="flex flex-col h-screen bg-black text-white">
       {/* Header */}
-      <div className="bg-gray-900 p-4 border-b border-gray-800 flex items-center sticky top-0 z-10 shadow-md">
-        <button onClick={() => router.push('/matches')} className="text-gray-400 hover:text-white mr-4 text-xl">←</button>
-        {otherUser ? (
-            <div className="flex items-center gap-3">
-                <img 
-                    src={otherUser.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${otherUser.avatarSeed || 'default'}`}
-                    className="w-10 h-10 rounded-full border border-purple-500 bg-gray-800 object-cover"
-                />
-                <h2 className="font-bold text-lg">{otherUser.displayName}</h2>
-            </div>
-        ) : <h2 className="font-bold text-lg">Loading...</h2>}
+      <div className="bg-gray-900 p-4 border-b border-gray-800 flex items-center justify-between sticky top-0 z-10 shadow-md">
+        
+        {/* LEFT SIDE: Back Btn + User Info */}
+        <div className="flex items-center gap-3">
+            <button onClick={() => router.push('/matches')} className="text-gray-400 hover:text-white text-xl">←</button>
+            {otherUser ? (
+                <div className="flex items-center gap-3">
+                    <img 
+                        src={otherUser.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${otherUser.avatarSeed || 'default'}`}
+                        className="w-10 h-10 rounded-full border border-purple-500 bg-gray-800 object-cover"
+                    />
+                    <h2 className="font-bold text-lg">{otherUser.displayName}</h2>
+                </div>
+            ) : <h2 className="font-bold text-lg text-gray-500">Loading...</h2>}
+        </div>
+
+        {/* RIGHT SIDE: Block Button (Now unambiguous) */}
+        <button 
+            onClick={handleBlock}
+            className="text-red-500 bg-red-500/10 px-3 py-2 rounded-lg text-sm font-bold border border-red-500/50 hover:bg-red-500 hover:text-white transition"
+        >
+            🚫 Block
+        </button>
       </div>
 
       {/* Chat Area */}
