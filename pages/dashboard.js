@@ -142,8 +142,9 @@ export default function Dashboard() {
             {/* Left: Profile Icon */}
             <button onClick={() => router.push('/profile')}>
                 <img 
-                    src={`https://api.dicebear.com/7.x/notionists/svg?seed=${user.avatarSeed}`} 
-                    className="w-10 h-10 rounded-full border border-purple-500 bg-gray-800"
+                    src={currentProfile.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${currentProfile.avatarSeed}`} 
+                    className="w-full h-full object-cover bg-gray-200 pointer-events-none" 
+                    alt="Profile"
                 />
             </button>
 
@@ -165,7 +166,7 @@ export default function Dashboard() {
             <p className="text-gray-300 mb-8">You and {showMatchPopup.displayName} liked each other.</p>
             
             <div className="flex gap-4 items-center mb-8">
-                <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${user.avatarSeed}`} className="w-20 h-20 rounded-full border-2 border-purple-500 bg-white"/>
+                <img src={user.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${user.avatarSeed}`} className="w-20 h-20 rounded-full border-2 border-purple-500 bg-white"/>
                 <span className="text-2xl">⚡</span>
                 <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${showMatchPopup.avatarSeed}`} className="w-20 h-20 rounded-full border-2 border-pink-500 bg-white"/>
             </div>

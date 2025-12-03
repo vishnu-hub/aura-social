@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { auth, db } from '../lib/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
@@ -8,6 +8,7 @@ const CAMPUS_OPTIONS = ["IIT Bombay"];
 
 export default function Profile() {
   const router = useRouter();
+  const fileInputRef = useRef(null); // Reference to the hidden file input
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -19,10 +20,10 @@ export default function Profile() {
     lookingFor: 'Female', 
     mode: 'General', 
     avatarSeed: '',
-    hostel: ''
+    photoUrl: '' // NEW: This will store the Real Photo string
   });
 
-  // 1. Load Data on Mount
+  // 1. Load Data
   useEffect(() => {
     const fetchProfile = async () => {
       const u = auth.currentUser;
@@ -37,7 +38,26 @@ export default function Profile() {
     fetchProfile();
   }, []);
 
-  // 2. Save Changes
+  // 2. Handle Image Selection (The "Hack")
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // A. Size Check (Critical for Free Tier)
+    if (file.size > 500 * 1024) { // 500KB limit
+        alert("Image too large! Please choose a photo under 500KB.");
+        return;
+    }
+
+    // B. Convert to Text (Base64)
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        setProfile({ ...profile, photoUrl: reader.result }); // Save the image as a string
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 3. Save Changes
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -46,21 +66,19 @@ export default function Profile() {
         ...profile,
         updatedAt: new Date()
       });
-      alert("Profile Updated!");
-      router.push('/dashboard'); // Go back to swiping
+      router.push('/dashboard'); 
     } catch (e) {
       alert("Error: " + e.message);
     }
     setSaving(false);
   };
 
-  // 3. Logout Logic
   const handleLogout = async () => {
     await signOut(auth);
     router.push('/');
   };
 
-  if (loading) return <div className="min-h-screen bg-black text-white flex items-center justify-center">Loading Profile...</div>;
+  if (loading) return <div className="min-h-screen bg-black text-white flex items-center justify-center">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-black text-white p-6 pb-20">
@@ -68,34 +86,66 @@ export default function Profile() {
       <div className="flex justify-between items-center mb-8">
         <button onClick={() => router.push('/dashboard')} className="text-gray-400 text-lg">← Back</button>
         <h1 className="text-xl font-bold">Edit Profile</h1>
-        <button onClick={handleLogout} className="text-red-500 text-sm font-bold border border-red-500 px-3 py-1 rounded-full">
+        <button onClick={handleLogout} className="text-red-500 text-sm border border-red-500 px-3 py-1 rounded-full">
             Logout
         </button>
       </div>
 
       <div className="max-w-md mx-auto space-y-6">
         
-        {/* Avatar Section */}
+        {/* PHOTO UPLOAD SECTION */}
         <div className="flex flex-col items-center">
-            <img 
-                src={`https://api.dicebear.com/7.x/notionists/svg?seed=${profile.avatarSeed}`} 
-                className="w-32 h-32 rounded-full border-4 border-purple-600 bg-white mb-2"
+            {/* Show Real Photo OR Avatar */}
+            <div className="relative group">
+                <img 
+                    src={profile.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${profile.avatarSeed}`} 
+                    className="w-32 h-32 rounded-full border-4 border-purple-600 bg-gray-800 object-cover"
+                />
+                
+                {/* Overlay Button */}
+                <button 
+                    onClick={() => fileInputRef.current.click()}
+                    className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                >
+                    <span className="text-xs font-bold">Change Photo</span>
+                </button>
+            </div>
+
+            {/* Hidden Input */}
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept="image/*"
+                onChange={handleImageUpload}
             />
-            <button 
-                onClick={() => setProfile({...profile, avatarSeed: Math.random().toString()})}
-                className="text-purple-400 text-sm hover:underline"
-            >
-                🎲 Roll New Avatar
-            </button>
+
+            {/* Avatar Fallback Button */}
+            {!profile.photoUrl && (
+                <button 
+                    onClick={() => setProfile({...profile, avatarSeed: Math.random().toString()})}
+                    className="text-purple-400 text-sm hover:underline mt-2"
+                >
+                    Or roll a random avatar 🎲
+                </button>
+            )}
+             {profile.photoUrl && (
+                <button 
+                    onClick={() => setProfile({...profile, photoUrl: ''})} // Remove photo
+                    className="text-red-400 text-sm hover:underline mt-2"
+                >
+                    Remove Photo
+                </button>
+            )}
         </div>
 
-        {/* Basic Info */}
+        {/* Basic Info Inputs */}
         <div>
             <label className="text-gray-500 text-xs uppercase font-bold">Display Name</label>
             <input 
                 value={profile.displayName}
                 onChange={e => setProfile({...profile, displayName: e.target.value})}
-                className="w-full bg-gray-900 border border-gray-800 p-3 rounded mt-1 focus:border-purple-500 outline-none"
+                className="w-full bg-gray-900 border border-gray-800 p-3 rounded mt-1 outline-none focus:border-purple-500"
             />
         </div>
 
@@ -104,14 +154,13 @@ export default function Profile() {
             <textarea 
                 value={profile.bio}
                 onChange={e => setProfile({...profile, bio: e.target.value})}
-                className="w-full bg-gray-900 border border-gray-800 p-3 rounded mt-1 h-24 focus:border-purple-500 outline-none"
+                className="w-full bg-gray-900 border border-gray-800 p-3 rounded mt-1 h-24 outline-none focus:border-purple-500"
             />
         </div>
 
-        {/* Discovery Settings */}
+        {/* Settings */}
         <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
-            <h3 className="text-purple-400 font-bold mb-4">Discovery Settings</h3>
-            
+            <h3 className="text-purple-400 font-bold mb-4">Settings</h3>
             <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                     <label className="text-gray-500 text-xs">I am</label>
@@ -138,8 +187,7 @@ export default function Profile() {
                     </select>
                 </div>
             </div>
-
-            {/* Mood Indigo Toggle */}
+            
             <div className="flex justify-between items-center bg-black p-3 rounded border border-yellow-800/50">
                 <div>
                     <span className="text-yellow-400 font-bold block">Mood Indigo Mode 🎷</span>
@@ -154,19 +202,6 @@ export default function Profile() {
             </div>
         </div>
 
-        {/* Campus (Locked for now or changeable) */}
-        <div>
-            <label className="text-gray-500 text-xs uppercase font-bold">Campus</label>
-            <select 
-                value={profile.campus}
-                onChange={e => setProfile({...profile, campus: e.target.value})}
-                className="w-full bg-gray-900 border border-gray-800 p-3 rounded mt-1"
-            >
-                {CAMPUS_OPTIONS.map(c => <option key={c}>{c}</option>)}
-            </select>
-        </div>
-
-        {/* Save Button */}
         <button 
             onClick={handleSave}
             disabled={saving}
@@ -174,7 +209,6 @@ export default function Profile() {
         >
             {saving ? "Saving..." : "Save Changes"}
         </button>
-
       </div>
     </div>
   );
