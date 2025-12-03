@@ -101,29 +101,40 @@ export default function Profile() {
       setProfile(prev => ({ ...prev, photoUrl: '' }));
   };
 
-  // --- THE AGGRESSIVE UNBLOCK FUNCTION ---
+  // --- THE GOD MODE UNBLOCK (Fixes the Ghost Match) ---
   const handleUnblock = async (targetUid) => {
-      // 1. Remove from Visual List (UI)
-      setBlockedList(prevList => prevList.filter(user => user.uid !== targetUid));
+      if(!confirm("Full Reset: This will remove the match from BOTH sides. Continue?")) return;
 
-      // 2. Remove from Form Data State (So 'Save' doesn't undo it)
+      const myId = auth.currentUser.uid;
+
+      // 1. UI Optimistic Update
+      setBlockedList(prevList => prevList.filter(user => user.uid !== targetUid));
       setProfile(prev => ({
           ...prev,
           blocked: prev.blocked.filter(id => id !== targetUid)
       }));
 
       try {
-          // 3. NUCLEAR CLEANUP: Remove from ALL lists in Database
-          await updateDoc(doc(db, "users", auth.currentUser.uid), {
-              blocked: arrayRemove(targetUid),
-              passed: arrayRemove(targetUid),
-              liked: arrayRemove(targetUid),
-              matches: arrayRemove(targetUid) // <--- ADD THIS (Crucial!)
+          // 2. Clean MY Profile (A)
+          // Remove B from EVERY list I have
+          await updateDoc(doc(db, "users", myId), {
+              blocked: arrayRemove(targetUid), // Unblock
+              passed: arrayRemove(targetUid),  // Remove from 'seen'
+              liked: arrayRemove(targetUid),   // Remove from 'liked' (Crucial!)
+              matches: arrayRemove(targetUid)  // Remove from 'matches'
+          });
+
+          // 3. Clean THEIR Profile (B) - The Remote Wipe
+          // We must remove ME from THEIR lists so they see me as a new person too
+          await updateDoc(doc(db, "users", targetUid), {
+              matches: arrayRemove(myId),      // Remove me from their matches
+              liked: arrayRemove(myId)         // Remove me from their likes (So we must re-match)
           });
           
-          alert("User unblocked and history reset. They will appear in your feed.");
+          alert("Connection fully reset. You are now strangers to each other.");
       } catch (e) {
-          alert("Error updating database: " + e.message);
+          console.error("Unblock Error:", e);
+          alert("Error: " + e.message);
           router.reload();
       }
   };
