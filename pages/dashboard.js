@@ -22,6 +22,8 @@ export default function Dashboard() {
         if (!mySnap.exists()) return router.push('/setup');
         
         const myData = mySnap.data();
+        
+        // SAFE USER OBJECT (Now includes 'blocked')
         const safeUser = {
             uid: auth.currentUser.uid,
             ...myData,
@@ -29,10 +31,12 @@ export default function Dashboard() {
             lookingFor: myData.lookingFor || "Everyone",
             mode: myData.mode || "General",
             avatarSeed: myData.avatarSeed || "default",
-            photoUrl: myData.photoUrl || "" 
+            photoUrl: myData.photoUrl || "",
+            blocked: myData.blocked || [] // <--- CRITICAL: Load blocked list
         };
         setUser(safeUser);
 
+        // Build Query
         let q = query(
             collection(db, "users"), 
             where("campus", "==", safeUser.campus),
@@ -53,8 +57,14 @@ export default function Dashboard() {
 
         querySnapshot.forEach((doc) => {
             const theirId = doc.id;
-            // FILTER LOGIC: Remove people I already Liked, Passed, or Matched
-            const myHistory = [...(myData.liked || []), ...(myData.passed || []), ...(myData.matches || [])];
+            
+            // FILTER LOGIC: Remove Liked, Passed, Matches, AND BLOCKED
+            const myHistory = [
+                ...(myData.liked || []), 
+                ...(myData.passed || []), 
+                ...(myData.matches || []),
+                ...(myData.blocked || []) // <--- THE FIX: Add blocked here
+            ];
             
             if (theirId !== safeUser.uid && !myHistory.includes(theirId)) {
                 feed.push({ id: theirId, ...doc.data() });
@@ -84,7 +94,6 @@ export default function Dashboard() {
     if (isMatch) {
         triggerMatch(target);
     } else {
-        // Just a like
         await updateDoc(doc(db, "users", user.uid), { liked: arrayUnion(target.id) });
         nextCard();
     }
@@ -100,17 +109,11 @@ export default function Dashboard() {
 
   const nextCard = () => { setCurrentCardIndex(prev => prev + 1); };
 
-  // --- NEW: RECYCLE LOGIC (Reset the 'Passed' Array) ---
   const handleRecycle = async () => {
-      if(!confirm("Bring back everyone you rejected? You might see old profiles again.")) return;
-      
+      if(!confirm("Bring back everyone you rejected?")) return;
       setLoading(true);
       try {
-          // Empty the 'passed' list in the database
-          await updateDoc(doc(db, "users", user.uid), {
-              passed: [] 
-          });
-          // Reload the page to fetch the "new" old profiles
+          await updateDoc(doc(db, "users", user.uid), { passed: [] });
           router.reload();
       } catch (e) {
           alert("Error resetting feed: " + e.message);
@@ -132,7 +135,6 @@ export default function Dashboard() {
     setShowMatchPopup({ ...targetUser, chatId: chatRef.id });
   };
 
-  // --- RENDER ---
   if (loading) return <div className="h-screen bg-black text-white flex items-center justify-center">Loading Vibes...</div>;
   if (!user) return <div className="h-screen bg-black text-white flex items-center justify-center">Reloading...</div>;
 
@@ -173,9 +175,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* --- THE TERNARY OPERATOR (The If / Else Logic) --- */}
+      {/* CARD LOGIC */}
       {currentProfile ? (
-        /* IF: We have a profile to show */
         <div className="w-full max-w-md flex-1 flex flex-col">
             <div className="bg-gray-900 rounded-3xl overflow-hidden border border-gray-800 shadow-2xl relative flex-1">
                 <div className="h-2/3 bg-gray-800 flex items-center justify-center relative">
@@ -203,21 +204,18 @@ export default function Dashboard() {
             </div>
         </div>
       ) : (
-        /* ELSE: No profiles left (The "End of World" Screen) */
         <div className="flex flex-col items-center justify-center h-2/3 text-center max-w-xs">
             <div className="text-6xl mb-4">🌍</div>
             <h2 className="text-2xl font-bold mb-2">That's everyone!</h2>
-            <p className="text-gray-400 mb-6 text-sm">You've seen all profiles in {user.campus}. Still Didn't find anyone???🤣</p>
+            <p className="text-gray-400 mb-6 text-sm">You've seen all profiles in {user.campus}.</p>
             
-            {/* OPTION 1: Refresh just in case */}
             <button onClick={() => router.reload()} className="text-purple-400 hover:text-white mb-4">Refresh Feed</button>
 
-            {/* OPTION 2: THE RECYCLE BUTTON */}
             <button 
                 onClick={handleRecycle}
                 className="bg-gray-800 border border-gray-600 text-white px-6 py-3 rounded-full hover:bg-gray-700 transition"
             >
-                🔄 It's okay. I get it. Review Rejected Profiles. It's all about second choices😉
+                🔄 Review Rejected Profiles
             </button>
         </div>
       )}
