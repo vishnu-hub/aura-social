@@ -36,7 +36,7 @@ export default function SetupProfile() {
         img.src = event.target.result;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const scaleFactor = 300 / Math.max(img.width, img.height);
+          const scaleFactor = 800 / Math.max(img.width, img.height);
           canvas.width = img.width * scaleFactor;
           canvas.height = img.height * scaleFactor;
           const ctx = canvas.getContext('2d');
