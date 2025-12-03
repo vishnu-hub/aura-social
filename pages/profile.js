@@ -10,7 +10,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
-  // 1. INITIAL STATE (These are your Safe Defaults)
+  // 1. INITIAL STATE (Safe Defaults)
   const [profile, setProfile] = useState({
     displayName: '',
     bio: '',
@@ -18,11 +18,11 @@ export default function Profile() {
     gender: 'Male', 
     lookingFor: 'Female', 
     mode: 'General', 
-    avatarSeed: 'default_seed', // Default so it never crashes
-    photoUrl: '' // Default so it never crashes
+    avatarSeed: 'default',
+    photoUrl: '' 
   });
 
-  // HELPER: Compress Image (Keeps it under 100KB)
+  // 2. HELPER: Compress Image
   const compressImage = (file) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -43,30 +43,27 @@ export default function Profile() {
     });
   };
 
-  // 2. LOAD DATA (The Fix is Here)
+  // 3. LOAD DATA
   useEffect(() => {
     const fetchProfile = async () => {
       if (!auth.currentUser) return router.push('/');
 
       try {
-          const docSnap = await getDoc(doc(db, "users", auth.currentUser.uid));
+          const docRef = doc(db, "users", auth.currentUser.uid);
+          const docSnap = await getDoc(docRef);
           
           if (docSnap.exists()) {
             const data = docSnap.data();
-            
-            // CRITICAL FIX: We use a functional update (prev => ...)
-            // We MERGE the DB data (...) with the existing defaults (prev).
-            // If DB is missing 'photoUrl', the default '' stays. No crash.
+            // SAFE MERGE: Keep defaults if DB fields are missing
             setProfile(prev => ({
                 ...prev, 
                 ...data,
-                // Double safety: If DB has null/undefined, force a fallback
-                avatarSeed: data.avatarSeed || prev.avatarSeed || 'default',
-                photoUrl: data.photoUrl || '' 
+                photoUrl: data.photoUrl || '', 
+                avatarSeed: data.avatarSeed || prev.avatarSeed || 'default'
             }));
           }
       } catch (e) {
-          console.error("Error loading profile:", e);
+          console.error("Profile load error:", e);
       }
       setLoading(false);
     };
@@ -94,10 +91,14 @@ export default function Profile() {
     setSaving(true);
     try {
       if(!auth.currentUser) return;
-      await updateDoc(doc(db, "users", auth.currentUser.uid), {
+      
+      // Sanitized profile object to prevent undefined errors in DB
+      const safeProfile = {
         ...profile,
         updatedAt: new Date()
-      });
+      };
+      
+      await updateDoc(doc(db, "users", auth.currentUser.uid), safeProfile);
       router.push('/dashboard'); 
     } catch (e) {
       alert("Save Failed: " + e.message);
@@ -110,7 +111,21 @@ export default function Profile() {
     router.push('/');
   };
 
+  // --- RENDER LOGIC ---
+
+  // Safety Check 1: Still loading?
   if (loading) return <div className="min-h-screen bg-black text-white flex items-center justify-center">Loading...</div>;
+
+  // Safety Check 2: Profile somehow undefined? (The Guard Clause)
+  if (!profile) return <div className="min-h-screen bg-black text-white flex items-center justify-center">Reloading...</div>;
+
+  // Variable Extraction (Prevents "undefined is not an object" crash)
+  const safeAvatarSeed = profile.avatarSeed || 'default';
+  const safePhotoUrl = profile.photoUrl || null;
+  const avatarUrl = `https://api.dicebear.com/7.x/notionists/svg?seed=${safeAvatarSeed}`;
+  
+  // Decide which image to show
+  const displayImage = safePhotoUrl || avatarUrl;
 
   return (
     <div className="min-h-screen bg-black text-white p-6 pb-20">
@@ -123,10 +138,10 @@ export default function Profile() {
       <div className="max-w-md mx-auto space-y-6">
         <div className="flex flex-col items-center">
             
-            {/* SAFE IMAGE RENDERER using Optional Chaining (?.) */}
+            {/* IMAGE SECTION */}
             <div className="relative group">
                 <img 
-                    src={profile?.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${profile?.avatarSeed}`} 
+                    src={displayImage} 
                     className="w-32 h-32 rounded-full border-4 border-purple-600 bg-gray-800 object-cover"
                     alt="Profile"
                 />
@@ -148,7 +163,7 @@ export default function Profile() {
             </button>
         </div>
 
-        {/* INPUT FIELDS */}
+        {/* INPUTS */}
         <div>
             <label className="text-gray-500 text-xs uppercase font-bold">Display Name</label>
             <input 
