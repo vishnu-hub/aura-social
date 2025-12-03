@@ -127,8 +127,9 @@ export default function Profile() {
         <div className="flex flex-col items-center">
             {/* Show Real Photo OR Avatar */}
             <div className="relative group">
+                {/* Only show image if profile exists */}
                 <img 
-                    src={profile.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${profile.avatarSeed}`} 
+                    src={profile?.photoUrl || `https://api.dicebear.com/7.x/notionists/svg?seed=${profile?.avatarSeed || 'default'}`} 
                     className="w-32 h-32 rounded-full border-4 border-purple-600 bg-gray-800 object-cover"
                 />
                 
