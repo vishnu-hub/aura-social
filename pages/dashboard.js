@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { auth, db } from '../lib/firebase';
 import { doc, getDoc, getDocs, collection, query, where, updateDoc, arrayUnion, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth'; // <--- NEW IMPORT
 import { useRouter } from 'next/router';
 import confetti from 'canvas-confetti';
 
@@ -11,83 +12,93 @@ export default function Dashboard() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [showMatchPopup, setShowMatchPopup] = useState(null); 
   const [loading, setLoading] = useState(true);
-  const [unreadCount, setUnreadCount] = useState(0); // NEW: Notification Count
+  const [unreadCount, setUnreadCount] = useState(0); 
 
-  // 1. Load User & Feed
   useEffect(() => {
-    const init = async () => {
-      if (!auth.currentUser) return router.push('/');
-
-      try {
-        const mySnap = await getDoc(doc(db, "users", auth.currentUser.uid));
-        if (!mySnap.exists()) return router.push('/setup');
-        
-        const myData = mySnap.data();
-        
-        const safeUser = {
-            uid: auth.currentUser.uid,
-            ...myData,
-            campus: myData.campus || "IIT Bombay",
-            lookingFor: myData.lookingFor || "Everyone",
-            mode: myData.mode || "General",
-            avatarSeed: myData.avatarSeed || "default",
-            photoUrl: myData.photoUrl || "",
-            blocked: myData.blocked || [] 
-        };
-        setUser(safeUser);
-
-        // --- NEW: LISTEN FOR UNREAD MESSAGES ---
-        // Query chats where 'unreadBy' array contains MY ID
-        const unreadQuery = query(
-            collection(db, "chats"), 
-            where("unreadBy", "array-contains", auth.currentUser.uid)
-        );
-        const unsubscribe = onSnapshot(unreadQuery, (snapshot) => {
-            setUnreadCount(snapshot.size); // Count how many docs found
-        });
-
-        // --- FEED LOGIC ---
-        let q = query(
-            collection(db, "users"), 
-            where("campus", "==", safeUser.campus),
-            where("mode", "==", safeUser.mode)
-        );
-
-        if (safeUser.lookingFor !== 'Everyone') {
-            q = query(
-                collection(db, "users"), 
-                where("campus", "==", safeUser.campus),
-                where("gender", "==", safeUser.lookingFor),
-                where("mode", "==", safeUser.mode)
-            );
+    // --- THE FIX: Listen for Auth State (Solves the Reload Bug) ---
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+        if (!currentUser) {
+            // Only redirect if Firebase explicitly says "No User" after checking
+            router.push('/');
+            return;
         }
 
-        const querySnapshot = await getDocs(q);
-        const feed = [];
-
-        querySnapshot.forEach((doc) => {
-            const theirId = doc.id;
-            const myHistory = [
-                ...(myData.liked || []), 
-                ...(myData.passed || []), 
-                ...(myData.matches || []),
-                ...(myData.blocked || []) 
-            ];
-            
-            if (theirId !== safeUser.uid && !myHistory.includes(theirId)) {
-                feed.push({ id: theirId, ...doc.data() });
+        // If we are here, the user is logged in (even after reload)
+        try {
+            const mySnap = await getDoc(doc(db, "users", currentUser.uid));
+            if (!mySnap.exists()) {
+                router.push('/setup');
+                return;
             }
-        });
+            
+            const myData = mySnap.data();
+            
+            const safeUser = {
+                uid: currentUser.uid,
+                ...myData,
+                campus: myData.campus || "IIT Bombay",
+                lookingFor: myData.lookingFor || "Everyone",
+                mode: myData.mode || "General",
+                avatarSeed: myData.avatarSeed || "default",
+                photoUrl: myData.photoUrl || "",
+                blocked: myData.blocked || [] 
+            };
+            setUser(safeUser);
 
-        setProfiles(feed);
-      } catch (error) {
-          console.error("Dashboard Error:", error);
-      }
-      setLoading(false);
-    };
+            // 1. LISTEN FOR UNREAD MESSAGES
+            const unreadQuery = query(
+                collection(db, "chats"), 
+                where("unreadBy", "array-contains", currentUser.uid)
+            );
+            // We use a separate snapshot listener here
+            onSnapshot(unreadQuery, (snapshot) => {
+                setUnreadCount(snapshot.size); 
+            });
 
-    init();
-  }, []);
+            // 2. FETCH FEED (Profiles)
+            let q = query(
+                collection(db, "users"), 
+                where("campus", "==", safeUser.campus),
+                where("mode", "==", safeUser.mode)
+            );
+
+            if (safeUser.lookingFor !== 'Everyone') {
+                q = query(
+                    collection(db, "users"), 
+                    where("campus", "==", safeUser.campus),
+                    where("gender", "==", safeUser.lookingFor),
+                    where("mode", "==", safeUser.mode)
+                );
+            }
+
+            const querySnapshot = await getDocs(q);
+            const feed = [];
+
+            querySnapshot.forEach((doc) => {
+                const theirId = doc.id;
+                // FILTER LOGIC: Remove Liked, Passed, Matches, AND BLOCKED
+                const myHistory = [
+                    ...(myData.liked || []), 
+                    ...(myData.passed || []), 
+                    ...(myData.matches || []),
+                    ...(myData.blocked || []) 
+                ];
+                
+                if (theirId !== safeUser.uid && !myHistory.includes(theirId)) {
+                    feed.push({ id: theirId, ...doc.data() });
+                }
+            });
+
+            setProfiles(feed);
+        } catch (error) {
+            console.error("Dashboard Error:", error);
+        }
+        setLoading(false);
+    });
+
+    // Cleanup listener on unmount
+    return () => unsubscribeAuth();
+  }, []); // Run once on mount
 
   const handleLike = async () => {
     const target = profiles[currentCardIndex];
@@ -130,12 +141,12 @@ export default function Dashboard() {
   const triggerMatch = async (targetUser) => {
     confetti(); 
     
-    // NEW: Add 'unreadBy' field so both users get a notification badge
+    // Create Chat with 'unreadBy' for notifications
     const chatRef = await addDoc(collection(db, "chats"), {
         users: [user.uid, targetUser.id],
         createdAt: serverTimestamp(),
         lastMessage: "Matched! Say hi.",
-        unreadBy: [user.uid, targetUser.id] // <--- NOTIFICATION TRIGGER
+        unreadBy: [user.uid, targetUser.id] 
     });
 
     await updateDoc(doc(db, "users", user.uid), { matches: arrayUnion(targetUser.id) });
@@ -165,7 +176,6 @@ export default function Dashboard() {
             AURA
         </h1>
 
-        {/* CHAT ICON WITH RED BADGE */}
         <button onClick={() => router.push('/matches')} className="relative p-2 bg-gray-900 rounded-full hover:bg-gray-800 border border-gray-800">
             💬
             {unreadCount > 0 && (
